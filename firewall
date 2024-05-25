@@ -12,8 +12,8 @@ show_menu() {
     echo "Select an option:"
     echo "1. Clear Firewall ${CHECKMARK1:-}"
     echo "2. List Firewall Rules ${CHECKMARK2:-}"
-    echo "3. Restart Services ${CHECKMARK3:-}"
-    echo "4. Setup Firewall ${CHECKMARK4:-}"
+    echo "3. Setup Firewall ${CHECKMARK3:-}"
+    echo "4. Restart Services ${CHECKMARK4:-}"
     echo "5. Quit"
 }
 
@@ -28,17 +28,17 @@ add_checkmark() {
 
 clear_firewall() {
     echo "Clearing Firewall..."
-    sudo iptables -P INPUT ACCEPT
-    sudo iptables -P FORWARD ACCEPT
-    sudo iptables -P OUTPUT ACCEPT
-    sudo iptables -F
-    sudo iptables -t nat -F
-    sudo ip6tables -F
-    sudo ip6tables -t nat -F
-    sudo iptables -X
-    sudo ip6tables -X
-    sudo iptables -Z
-    sudo ip6tables -Z
+    sudo iptables -P INPUT ACCEPT && echo "Set default INPUT policy to ACCEPT ✔"
+    sudo iptables -P FORWARD ACCEPT && echo "Set default FORWARD policy to ACCEPT ✔"
+    sudo iptables -P OUTPUT ACCEPT && echo "Set default OUTPUT policy to ACCEPT ✔"
+    sudo iptables -F && echo "Flushed IPv4 filter table ✔"
+    sudo iptables -t nat -F && echo "Flushed IPv4 NAT table ✔"
+    sudo ip6tables -F && echo "Flushed IPv6 filter table ✔"
+    sudo ip6tables -t nat -F && echo "Flushed IPv6 NAT table ✔"
+    sudo iptables -X && echo "Deleted all user-defined IPv4 chains ✔"
+    sudo ip6tables -X && echo "Deleted all user-defined IPv6 chains ✔"
+    sudo iptables -Z && echo "Zeroed all IPv4 packet and byte counters ✔"
+    sudo ip6tables -Z && echo "Zeroed all IPv6 packet and byte counters ✔"
     echo "Firewall cleared successfully."
     add_checkmark 1
     sleep 5
@@ -47,19 +47,10 @@ clear_firewall() {
 list_firewall() {
     echo "Listing Firewall Rules..."
     echo "IPv4 Rules:"
-    sudo iptables -L -v -n
+    sudo iptables -L -v -n && echo "Listed IPv4 rules ✔"
     echo -e "\nIPv6 Rules:"
-    sudo ip6tables -L -v -n
+    sudo ip6tables -L -v -n && echo "Listed IPv6 rules ✔"
     add_checkmark 2
-    sleep 5
-}
-
-restart_services() {
-    read -p "Enter the services you want to restart: " services </dev/tty
-    echo "The service/services $services will be restarted"
-    sudo systemctl restart $services
-    echo -e "\nThe service/services $services was/were restarted\n"
-    add_checkmark 3
     sleep 5
 }
 
@@ -69,68 +60,78 @@ setup_firewall() {
             echo -e "$1 is not installed. Installing...\n"
             echo iptables-persistent iptables-persistent/autosave_v4 boolean true | sudo debconf-set-selections
             echo iptables-persistent iptables-persistent/autosave_v6 boolean true | sudo debconf-set-selections
-            sudo apt-get install -y --no-install-recommends "$1"
-            echo -e "$1 has been installed successfully.\n"
+            sudo apt-get install -y --no-install-recommends "$1" && echo "$1 has been installed successfully. ✔"
         else
-            echo "$1 is already installed."
+            echo "$1 is already installed. ✔"
         fi
     }
 
     firewall_install() {
         # Allow SSH connections to prevent lockout
-        sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-        sudo ip6tables -A INPUT -p tcp --dport 22 -j ACCEPT
+        sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT && echo "Allowed SSH connections (IPv4) ✔"
+        sudo ip6tables -A INPUT -p tcp --dport 22 -j ACCEPT && echo "Allowed SSH connections (IPv6) ✔"
 
         # Flush existing rules
-        sudo iptables -F
-        sudo iptables -t nat -F
-        sudo ip6tables -F
-        sudo ip6tables -t nat -F
-        sudo iptables -X
-        sudo ip6tables -X
-        sudo iptables -Z
-        sudo ip6tables -Z
+        sudo iptables -F && echo "Flushed existing IPv4 filter table ✔"
+        sudo iptables -t nat -F && echo "Flushed existing IPv4 NAT table ✔"
+        sudo ip6tables -F && echo "Flushed existing IPv6 filter table ✔"
+        sudo ip6tables -t nat -F && echo "Flushed existing IPv6 NAT table ✔"
+        sudo iptables -X && echo "Deleted all user-defined IPv4 chains ✔"
+        sudo ip6tables -X && echo "Deleted all user-defined IPv6 chains ✔"
+        sudo iptables -Z && echo "Zeroed all IPv4 packet and byte counters ✔"
+        sudo ip6tables -Z && echo "Zeroed all IPv6 packet and byte counters ✔"
 
         # Set default policy to DROP
-        sudo iptables -P INPUT DROP
-        sudo iptables -P FORWARD DROP
-        sudo iptables -P OUTPUT ACCEPT
-        sudo ip6tables -P INPUT DROP
-        sudo ip6tables -P FORWARD DROP
-        sudo ip6tables -P OUTPUT ACCEPT
+        sudo iptables -P INPUT DROP && echo "Set default IPv4 INPUT policy to DROP ✔"
+        sudo iptables -P FORWARD DROP && echo "Set default IPv4 FORWARD policy to DROP ✔"
+        sudo iptables -P OUTPUT ACCEPT && echo "Set default IPv4 OUTPUT policy to ACCEPT ✔"
+        sudo ip6tables -P INPUT DROP && echo "Set default IPv6 INPUT policy to DROP ✔"
+        sudo ip6tables -P FORWARD DROP && echo "Set default IPv6 FORWARD policy to DROP ✔"
+        sudo ip6tables -P OUTPUT ACCEPT && echo "Set default IPv6 OUTPUT policy to ACCEPT ✔"
 
         # Allow established connections and loopback traffic
-        sudo iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-        sudo ip6tables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
-        sudo iptables -A INPUT -i lo -j ACCEPT
-        sudo ip6tables -A INPUT -i lo -j ACCEPT
+        sudo iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT && echo "Allowed established IPv4 connections ✔"
+        sudo ip6tables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT && echo "Allowed established IPv6 connections ✔"
+        sudo iptables -A INPUT -i lo -j ACCEPT && echo "Allowed IPv4 loopback traffic ✔"
+        sudo ip6tables -A INPUT -i lo -j ACCEPT && echo "Allowed IPv6 loopback traffic ✔"
 
         # Drop invalid packets
-        sudo iptables -A INPUT -m conntrack --ctstate INVALID -j DROP
-        sudo ip6tables -A INPUT -m conntrack --ctstate INVALID -j DROP
+        sudo iptables -A INPUT -m conntrack --ctstate INVALID -j DROP && echo "Dropped invalid IPv4 packets ✔"
+        sudo ip6tables -A INPUT -m conntrack --ctstate INVALID -j DROP && echo "Dropped invalid IPv6 packets ✔"
 
         # Drop packets with suspicious TCP flags
         suspicious_flags=(
-            "NONE" "FIN,SYN" "SYN,RST" "FIN,RST" "FIN,ACK" "ACK,URG"
-            "ACK,FIN" "ACK,PSH" "ALL" "ALL,NONE" "ALL,FIN,PSH,URG"
-            "ALL,SYN,FIN,PSH,URG" "ALL,SYN,RST,ACK,FIN,URG"
+            "NONE ALL" "FIN,SYN FIN,SYN" "SYN,RST SYN,RST" "FIN,RST FIN,RST"
+            "FIN,ACK FIN" "ACK,URG URG" "ACK,FIN FIN" "ACK,PSH PSH" 
+            "ALL ALL" "ALL,NONE NONE" "ALL,FIN,PSH,URG FIN,PSH,URG"
+            "ALL,SYN,FIN,PSH,URG SYN,FIN,PSH,URG" "ALL,SYN,RST,ACK,FIN,URG SYN,RST,ACK,FIN,URG"
         )
         for flag in "${suspicious_flags[@]}"; do
-            sudo iptables -A INPUT -p tcp --tcp-flags $flag -j DROP
-            sudo ip6tables -A INPUT -p tcp --tcp-flags $flag -j DROP
+            sudo iptables -A INPUT -p tcp --tcp-flags $flag -j DROP && echo "Dropped suspicious IPv4 packets with flags $flag ✔"
+            sudo ip6tables -A INPUT -p tcp --tcp-flags $flag -j DROP && echo "Dropped suspicious IPv6 packets with flags $flag ✔"
         done
 
         # Drop fragmented packets
-        sudo iptables -A INPUT -f -j DROP
-        sudo ip6tables -A INPUT -m frag --fragid 0 -j DROP
+        sudo iptables -A INPUT -f -j DROP && echo "Dropped fragmented IPv4 packets ✔"
+        sudo ip6tables -A INPUT -m frag --fragid 0 -j DROP && echo "Dropped fragmented IPv6 packets ✔"
 
         # Prevent SYN flood
-        sudo iptables -A INPUT -p tcp --syn -m limit --limit 100/s --limit-burst 200 -j ACCEPT
-        sudo iptables -A INPUT -p tcp --syn -j DROP
-        sudo ip6tables -A INPUT -p tcp --syn -m limit --limit 100/s --limit-burst 200 -j ACCEPT
+        sudo iptables -A INPUT -p tcp --syn -m limit --limit 100/s --limit-burst 200 -j ACCEPT && echo "Allowed limited SYN flood protection (IPv4) ✔"
+        sudo iptables -A INPUT -p tcp --syn -j DROP && echo "Dropped excessive SYN flood (IPv4) ✔"
+        sudo ip6tables -A INPUT -p tcp --syn -m limit --limit 100/s --limit-burst 200 -j ACCEPT && echo "Allowed limited SYN flood protection (IPv6) ✔"
     }
 
+    installpackages "iptables-persistent"
     firewall_install
+    add_checkmark 3
+    sleep 5
+}
+
+restart_services() {
+    read -p "Enter the services you want to restart: " services </dev/tty
+    echo "The service/services $services will be restarted"
+    sudo systemctl restart $services && echo "Restarted service(s) $services ✔"
+    echo -e "\nThe service/services $services was/were restarted\n"
     add_checkmark 4
     sleep 5
 }
@@ -154,10 +155,10 @@ while true; do
             list_firewall
             ;;
         3)
-            restart_services
+            setup_firewall
             ;;
         4)
-            setup_firewall
+            restart_services
             ;;
         5)
             echo "Exiting..."

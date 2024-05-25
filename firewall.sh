@@ -9,6 +9,14 @@ clear_console() {
     echo -e "######################################################################################"
 }
 
+execute_command() {
+    if "$@"; then
+        echo -e "✔ $@"
+    else
+        echo -e "✘ $@"
+    fi
+}
+
 installpackages() {
     clear_console
     if ! dpkg -s "$1" &> /dev/null; then
@@ -29,15 +37,6 @@ installpackages() {
 firewall_install() {
     clear_console
     echo "bogdiz: Setting up firewall rules..."
-
-    execute_command() {
-        "$@"
-        if [ $? -eq 0 ]; then
-            echo -e "✔ $@"
-        else
-            echo -e "✘ $@"
-        fi
-    }
 
     # Flush existing rules
     execute_command sudo iptables -F
@@ -126,108 +125,95 @@ firewall_install() {
     execute_command sudo ip6tables -A LAYER7_DDOS_HTTP -p tcp --dport 80 -m string --string "POST" --algo bm --to 65535 -j DROP
     execute_command sudo ip6tables -A LAYER7_DDOS_HTTP -p tcp --dport 80 -m recent --name HTTP --update --seconds 60 --hitcount 50 -j DROP
 
-    execute_command sudo iptables -N LAYER7_DDOS_HTTPS
-    execute_command sudo iptables -A LAYER7_DDOS_HTTPS -p tcp --dport 443 -m string --string "GET" --algo bm --to 65535 -j DROP
-    execute_command sudo iptables -A LAYER7_DDOS_HTTPS -p tcp --dport 443 -m string --string "POST" --algo bm --to 65535 -j DROP
-    execute_command sudo iptables -A LAYER7_DDOS_HTTPS -p tcp --dport 443 -m recent --name HTTPS --update --seconds 60 --hitcount 50 -j DROP
-
-    execute_command sudo ip6tables -N LAYER7_DDOS_HTTPS
-    execute_command sudo ip6tables -A LAYER7_DDOS_HTTPS -p tcp --dport 443 -m string --string "GET" --algo bm --to 65535 -j DROP
-    execute_command sudo ip6tables -A LAYER7_DDOS_HTTPS -p tcp --dport 443 -m string --string "POST" --algo bm --to 65535 -j DROP
-    execute_command sudo ip6tables -A LAYER7_DDOS_HTTPS -p tcp --dport 443 -m recent --name HTTPS --update --seconds 60 --hitcount 50 -j DROP
-
-    # Allow HTTP (port 80) connections
-    execute_command sudo iptables -A INPUT -p tcp --dport 80 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
-    execute_command sudo ip6tables -A INPUT -p tcp --dport 80 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
-
-    # Allow HTTPS (port 443) connections
-    execute_command sudo iptables -A INPUT -p tcp --dport 443 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
-    execute_command sudo ip6tables -A INPUT -p tcp --dport 443 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
-
-    # Ensure LAYER7_DDOS chains are called
-    execute_command sudo iptables -A INPUT -j LAYER7_DDOS_HTTP
-    execute_command sudo iptables -A INPUT -j LAYER7_DDOS_HTTPS
-    execute_command sudo ip6tables -A INPUT -j LAYER7_DDOS_HTTP
-    execute_command sudo ip6tables -A INPUT -j LAYER7_DDOS_HTTPS
-
-    # Accept packets for loopback interface
+    # Allow loopback traffic
     execute_command sudo iptables -A INPUT -i lo -j ACCEPT
     execute_command sudo ip6tables -A INPUT -i lo -j ACCEPT
 
-    # Accept established connections
+    # Allow established connections
     execute_command sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
     execute_command sudo ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-    # Allow SSH (port 22) connections
-    execute_command sudo iptables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
-    execute_command sudo ip6tables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+    # Explicitly allow HTTP and HTTPS traffic
+    execute_command sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+    execute_command sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+    execute_command sudo ip6tables -A INPUT -p tcp --dport 80 -j ACCEPT
+    execute_command sudo ip6tables -A INPUT -p tcp --dport 443 -j ACCEPT
 
-    # Save the iptables rules
-    execute_command sudo netfilter-persistent save
+    # Ensure SSH is allowed
+    execute_command sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+    execute_command sudo ip6tables -A INPUT -p tcp --dport 22 -j ACCEPT
 
+    echo -e "\nFirewall setup completed. ✔"
+    read -rp "Press Enter to continue..."
+}
+
+firewall_clear() {
     clear_console
-    echo -e "Firewall rules setup successfully. ✔\n"
+    echo "Clearing all firewall rules..."
+
+    # Flush existing rules
+    execute_command sudo iptables -F
+    execute_command sudo iptables -t nat -F
+    execute_command sudo ip6tables -F
+    execute_command sudo ip6tables -t nat -F
+    execute_command sudo iptables -X
+    execute_command sudo ip6tables -X
+    execute_command sudo iptables -Z
+    execute_command sudo ip6tables -Z
+
+    # Set default policies to ACCEPT
+    execute_command sudo iptables -P INPUT ACCEPT
+    execute_command sudo iptables -P FORWARD ACCEPT
+    execute_command sudo iptables -P OUTPUT ACCEPT
+    execute_command sudo ip6tables -P INPUT ACCEPT
+    execute_command sudo ip6tables -P FORWARD ACCEPT
+    execute_command sudo ip6tables -P OUTPUT ACCEPT
+
+    # Ensure SSH is allowed
+    execute_command sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+    execute_command sudo ip6tables -A INPUT -p tcp --dport 22 -j ACCEPT
+
+    echo -e "\nAll firewall rules cleared. ✔"
+    read -rp "Press Enter to continue..."
+}
+
+firewall_list() {
+    clear_console
+    echo "Listing current firewall rules..."
+    echo -e "\nip4tables rules:\n"
+    execute_command sudo iptables -L -v -n
+    echo -e "\nip6tables rules:\n"
+    execute_command sudo ip6tables -L -v -n
     read -rp "Press Enter to continue..."
 }
 
 restart_services() {
     clear_console
-    echo "bogdiz: Restarting services..."
-    services=(apache2 mysql nginx)
-    for service in "${services[@]}"; do
-        if sudo systemctl restart "$service"; then
-            echo -e "Service $service restarted successfully. ✔"
-        else
-            echo -e "Failed to restart service $service. ✘"
-        fi
-    done
+    echo -e "Restarting services...\n"
+    execute_command sudo systemctl restart apache2
+    execute_command sudo systemctl restart mysql
+    execute_command sudo systemctl restart nginx
+    echo -e "\nServices restarted. ✔"
     read -rp "Press Enter to continue..."
 }
 
 while true; do
     clear_console
-    echo "Select an option:"
-    echo "1. Clear Firewall"
-    echo "2. List Firewall Rules"
-    echo "3. Setup Firewall"
-    echo "4. Restart Services"
-    echo "5. Install packages"
-    echo "6. Exit"
-    read -rp "Enter your choice: " choice
+    echo -e "1. Clear firewall rules"
+    echo -e "2. List current firewall rules"
+    echo -e "3. Setup firewall"
+    echo -e "4. Restart services"
+    echo -e "5. Install required packages"
+    echo -e "6. Exit"
+    echo -e "Please select an option: "
+    read -rp "Option: " choice
     case $choice in
-        1)
-            clear_console
-            echo "bogdiz: Clearing firewall rules..."
-            if sudo iptables -F && sudo ip6tables -F && sudo iptables -t nat -F && sudo ip6tables -t nat -F; then
-                echo -e "Firewall rules cleared successfully. ✔\n"
-            else
-                echo -e "Failed to clear firewall rules. ✘\n"
-            fi
-            read -rp "Press Enter to continue..."
-            ;;
-        2)
-            clear_console
-            echo "bogdiz: Listing firewall rules..."
-            sudo iptables -L -v -n
-            sudo ip6tables -L -v -n
-            read -rp "Press Enter to continue..."
-            ;;
-        3)
-            firewall_install
-            ;;
-        4)
-            restart_services
-            ;;
-        5)
-            installpackages iptables-persistent
-            ;;
-        6)
-            exit 0
-            ;;
-        *)
-            clear_console
-            echo "Invalid choice. Please try again."
-            read -rp "Press Enter to continue..."
-            ;;
+        1) firewall_clear ;;
+        2) firewall_list ;;
+        3) firewall_install ;;
+        4) restart_services ;;
+        5) installpackages iptables-persistent ;;
+        6) break ;;
+        *) echo -e "Invalid option. Please try again." ;;
     esac
 done

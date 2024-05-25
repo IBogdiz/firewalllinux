@@ -1,172 +1,233 @@
 #!/bin/bash
 
-clear
-
-echo -e "######################################################################################
-#                                                                                    #
-#                            Project 'BOGDIZ - Firewall'                             #
-#                                                                                    #
-######################################################################################\n"
-
-show_menu() {
-    echo "Select an option:"
-    echo "1. Clear Firewall ${CHECKMARK1:-}"
-    echo "2. List Firewall Rules ${CHECKMARK2:-}"
-    echo "3. Setup Firewall ${CHECKMARK3:-}"
-    echo "4. Restart Services ${CHECKMARK4:-}"
-    echo "5. Quit"
+clear_console() {
+    clear
+    echo -e "######################################################################################"
+    echo -e "#                                                                                    #"
+    echo -e "#                            Project 'BOGDIZ - Firewall'                             #"
+    echo -e "#                                                                                    #"
+    echo -e "######################################################################################"
 }
 
-add_checkmark() {
-    case $1 in
-        1) CHECKMARK1="✔" ;;
-        2) CHECKMARK2="✔" ;;
-        3) CHECKMARK3="✔" ;;
-        4) CHECKMARK4="✔" ;;
-    esac
-}
-
-clear_firewall() {
-    echo "Clearing Firewall..."
-    sudo iptables -P INPUT ACCEPT && echo "Set default INPUT policy to ACCEPT ✔"
-    sudo iptables -P FORWARD ACCEPT && echo "Set default FORWARD policy to ACCEPT ✔"
-    sudo iptables -P OUTPUT ACCEPT && echo "Set default OUTPUT policy to ACCEPT ✔"
-    sudo iptables -F && echo "Flushed IPv4 filter table ✔"
-    sudo iptables -t nat -F && echo "Flushed IPv4 NAT table ✔"
-    sudo ip6tables -F && echo "Flushed IPv6 filter table ✔"
-    sudo ip6tables -t nat -F && echo "Flushed IPv6 NAT table ✔"
-    sudo iptables -X && echo "Deleted all user-defined IPv4 chains ✔"
-    sudo ip6tables -X && echo "Deleted all user-defined IPv6 chains ✔"
-    sudo iptables -Z && echo "Zeroed all IPv4 packet and byte counters ✔"
-    sudo ip6tables -Z && echo "Zeroed all IPv6 packet and byte counters ✔"
-    echo "Firewall cleared successfully."
-    add_checkmark 1
-    sleep 5
-}
-
-list_firewall() {
-    echo "Listing Firewall Rules..."
-    echo "IPv4 Rules:"
-    sudo iptables -L -v -n && echo "Listed IPv4 rules ✔"
-    echo -e "\nIPv6 Rules:"
-    sudo ip6tables -L -v -n && echo "Listed IPv6 rules ✔"
-    add_checkmark 2
-    sleep 5
-}
-
-setup_firewall() {
-    installpackages() {
-        if ! dpkg -s "$1" &> /dev/null; then
-            echo -e "$1 is not installed. Installing...\n"
-            echo iptables-persistent iptables-persistent/autosave_v4 boolean true | sudo debconf-set-selections
-            echo iptables-persistent iptables-persistent/autosave_v6 boolean true | sudo debconf-set-selections
-            sudo apt-get install -y --no-install-recommends "$1" && echo "$1 has been installed successfully. ✔"
+installpackages() {
+    clear_console
+    if ! dpkg -s "$1" &> /dev/null; then
+        echo -e "$1 is not installed. Installing...\n"
+        echo iptables-persistent iptables-persistent/autosave_v4 boolean true | sudo debconf-set-selections
+        echo iptables-persistent iptables-persistent/autosave_v6 boolean true | sudo debconf-set-selections
+        if sudo apt-get install -y --no-install-recommends "$1"; then
+            echo -e "$1 has been installed successfully. ✔\n"
         else
-            echo "$1 is already installed. ✔"
+            echo -e "$1 installation failed. ✘\n"
+        fi
+    else
+        echo "$1 is already installed. ✘ (already existing)"
+    fi
+    read -rp "Press Enter to continue..."
+}
+
+firewall_install() {
+    clear_console
+    echo "bogdiz: Setting up firewall rules..."
+
+    execute_command() {
+        "$@"
+        if [ $? -eq 0 ]; then
+            echo -e "✔ $@"
+        else
+            echo -e "✘ $@"
         fi
     }
 
-    firewall_install() {
-        # Allow SSH connections to prevent lockout
-        sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT && echo "Allowed SSH connections (IPv4) ✔"
-        sudo ip6tables -A INPUT -p tcp --dport 22 -j ACCEPT && echo "Allowed SSH connections (IPv6) ✔"
+    # Flush existing rules
+    execute_command sudo iptables -F
+    execute_command sudo iptables -t nat -F
+    execute_command sudo ip6tables -F
+    execute_command sudo ip6tables -t nat -F
+    execute_command sudo iptables -X
+    execute_command sudo ip6tables -X
+    execute_command sudo iptables -Z
+    execute_command sudo ip6tables -Z
 
-        # Flush existing rules
-        sudo iptables -F && echo "Flushed existing IPv4 filter table ✔"
-        sudo iptables -t nat -F && echo "Flushed existing IPv4 NAT table ✔"
-        sudo ip6tables -F && echo "Flushed existing IPv6 filter table ✔"
-        sudo ip6tables -t nat -F && echo "Flushed existing IPv6 NAT table ✔"
-        sudo iptables -X && echo "Deleted all user-defined IPv4 chains ✔"
-        sudo ip6tables -X && echo "Deleted all user-defined IPv6 chains ✔"
-        sudo iptables -Z && echo "Zeroed all IPv4 packet and byte counters ✔"
-        sudo ip6tables -Z && echo "Zeroed all IPv6 packet and byte counters ✔"
+    # Set default policy to DROP
+    execute_command sudo iptables -P INPUT DROP
+    execute_command sudo iptables -P FORWARD DROP
+    execute_command sudo iptables -P OUTPUT ACCEPT
+    execute_command sudo ip6tables -P INPUT DROP
+    execute_command sudo ip6tables -P FORWARD DROP
+    execute_command sudo ip6tables -P OUTPUT ACCEPT
 
-        # Set default policy to DROP
-        sudo iptables -P INPUT DROP && echo "Set default IPv4 INPUT policy to DROP ✔"
-        sudo iptables -P FORWARD DROP && echo "Set default IPv4 FORWARD policy to DROP ✔"
-        sudo iptables -P OUTPUT ACCEPT && echo "Set default IPv4 OUTPUT policy to ACCEPT ✔"
-        sudo ip6tables -P INPUT DROP && echo "Set default IPv6 INPUT policy to DROP ✔"
-        sudo ip6tables -P FORWARD DROP && echo "Set default IPv6 FORWARD policy to DROP ✔"
-        sudo ip6tables -P OUTPUT ACCEPT && echo "Set default IPv6 OUTPUT policy to ACCEPT ✔"
+    # Drop invalid packets
+    execute_command sudo iptables -A INPUT -m conntrack --ctstate INVALID -j DROP
+    execute_command sudo ip6tables -A INPUT -m conntrack --ctstate INVALID -j DROP
 
-        # Allow established connections and loopback traffic
-        sudo iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT && echo "Allowed established IPv4 connections ✔"
-        sudo ip6tables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT && echo "Allowed established IPv6 connections ✔"
-        sudo iptables -A INPUT -i lo -j ACCEPT && echo "Allowed IPv4 loopback traffic ✔"
-        sudo ip6tables -A INPUT -i lo -j ACCEPT && echo "Allowed IPv6 loopback traffic ✔"
+    # Drop packets with suspicious TCP flags
+    execute_command sudo iptables -A INPUT -p tcp --tcp-flags FIN,SYN,RST,PSH,ACK,URG NONE -j DROP
+    execute_command sudo iptables -A INPUT -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP
+    execute_command sudo iptables -A INPUT -p tcp --tcp-flags SYN,RST SYN,RST -j DROP
+    execute_command sudo iptables -A INPUT -p tcp --tcp-flags FIN,RST FIN,RST -j DROP
+    execute_command sudo iptables -A INPUT -p tcp --tcp-flags FIN,ACK FIN -j DROP
+    execute_command sudo iptables -A INPUT -p tcp --tcp-flags ACK,URG URG -j DROP
+    execute_command sudo iptables -A INPUT -p tcp --tcp-flags ACK,FIN FIN -j DROP
+    execute_command sudo iptables -A INPUT -p tcp --tcp-flags ACK,PSH PSH -j DROP
+    execute_command sudo iptables -A INPUT -p tcp --tcp-flags ALL ALL -j DROP
+    execute_command sudo iptables -A INPUT -p tcp --tcp-flags ALL NONE -j DROP
+    execute_command sudo iptables -A INPUT -p tcp --tcp-flags ALL FIN,PSH,URG -j DROP
+    execute_command sudo iptables -A INPUT -p tcp --tcp-flags ALL SYN,FIN,PSH,URG -j DROP
+    execute_command sudo iptables -A INPUT -p tcp --tcp-flags ALL SYN,RST,ACK,FIN,URG -j DROP
+    execute_command sudo ip6tables -A INPUT -p tcp --tcp-flags FIN,SYN,RST,PSH,ACK,URG NONE -j DROP
+    execute_command sudo ip6tables -A INPUT -p tcp --tcp-flags FIN,SYN FIN,SYN -j DROP
+    execute_command sudo ip6tables -A INPUT -p tcp --tcp-flags SYN,RST SYN,RST -j DROP
+    execute_command sudo ip6tables -A INPUT -p tcp --tcp-flags FIN,RST FIN,RST -j DROP
+    execute_command sudo ip6tables -A INPUT -p tcp --tcp-flags FIN,ACK FIN -j DROP
+    execute_command sudo ip6tables -A INPUT -p tcp --tcp-flags ACK,URG URG -j DROP
+    execute_command sudo ip6tables -A INPUT -p tcp --tcp-flags ACK,FIN FIN -j DROP
+    execute_command sudo ip6tables -A INPUT -p tcp --tcp-flags ACK,PSH PSH -j DROP
+    execute_command sudo ip6tables -A INPUT -p tcp --tcp-flags ALL ALL -j DROP
+    execute_command sudo ip6tables -A INPUT -p tcp --tcp-flags ALL NONE -j DROP
+    execute_command sudo ip6tables -A INPUT -p tcp --tcp-flags ALL FIN,PSH,URG -j DROP
+    execute_command sudo ip6tables -A INPUT -p tcp --tcp-flags ALL SYN,FIN,PSH,URG -j DROP
+    execute_command sudo ip6tables -A INPUT -p tcp --tcp-flags ALL SYN,RST,ACK,FIN,URG -j DROP
 
-        # Drop invalid packets
-        sudo iptables -A INPUT -m conntrack --ctstate INVALID -j DROP && echo "Dropped invalid IPv4 packets ✔"
-        sudo ip6tables -A INPUT -m conntrack --ctstate INVALID -j DROP && echo "Dropped invalid IPv6 packets ✔"
+    # Drop fragmented packets
+    execute_command sudo iptables -A INPUT -f -j DROP
+    execute_command sudo ip6tables -A INPUT -m frag --fragid 0 -j DROP
 
-        # Drop packets with suspicious TCP flags
-        suspicious_flags=(
-            "NONE ALL" "FIN,SYN FIN,SYN" "SYN,RST SYN,RST" "FIN,RST FIN,RST"
-            "FIN,ACK FIN" "ACK,URG URG" "ACK,FIN FIN" "ACK,PSH PSH" 
-            "ALL ALL" "ALL,NONE NONE" "ALL,FIN,PSH,URG FIN,PSH,URG"
-            "ALL,SYN,FIN,PSH,URG SYN,FIN,PSH,URG" "ALL,SYN,RST,ACK,FIN,URG SYN,RST,ACK,FIN,URG"
-        )
-        for flag in "${suspicious_flags[@]}"; do
-            sudo iptables -A INPUT -p tcp --tcp-flags $flag -j DROP && echo "Dropped suspicious IPv4 packets with flags $flag ✔"
-            sudo ip6tables -A INPUT -p tcp --tcp-flags $flag -j DROP && echo "Dropped suspicious IPv6 packets with flags $flag ✔"
-        done
+    # Prevent SYN flood
+    execute_command sudo iptables -A INPUT -p tcp --syn -m limit --limit 100/s --limit-burst 200 -j ACCEPT
+    execute_command sudo iptables -A INPUT -p tcp --syn -j DROP
+    execute_command sudo ip6tables -A INPUT -p tcp --syn -m limit --limit 100/s --limit-burst 200 -j ACCEPT
+    execute_command sudo ip6tables -A INPUT -p tcp --syn -j DROP
 
-        # Drop fragmented packets
-        sudo iptables -A INPUT -f -j DROP && echo "Dropped fragmented IPv4 packets ✔"
-        sudo ip6tables -A INPUT -m frag --fragid 0 -j DROP && echo "Dropped fragmented IPv6 packets ✔"
+    # Limit new connections
+    execute_command sudo iptables -A INPUT -p tcp -m conntrack --ctstate NEW -m limit --limit 60/s --limit-burst 20 -j ACCEPT
+    execute_command sudo iptables -A INPUT -p tcp -m conntrack --ctstate NEW -j DROP
+    execute_command sudo ip6tables -A INPUT -p tcp -m conntrack --ctstate NEW -m limit --limit 60/s --limit-burst 20 -j ACCEPT
+    execute_command sudo ip6tables -A INPUT -p tcp -m conntrack --ctstate NEW -j DROP
 
-        # Prevent SYN flood
-        sudo iptables -A INPUT -p tcp --syn -m limit --limit 100/s --limit-burst 200 -j ACCEPT && echo "Allowed limited SYN flood protection (IPv4) ✔"
-        sudo iptables -A INPUT -p tcp --syn -j DROP && echo "Dropped excessive SYN flood (IPv4) ✔"
-        sudo ip6tables -A INPUT -p tcp --syn -m limit --limit 100/s --limit-burst 200 -j ACCEPT && echo "Allowed limited SYN flood protection (IPv6) ✔"
-    }
+    # Detect port scanning
+    execute_command sudo iptables -N port-scanning
+    execute_command sudo iptables -A port-scanning -p tcp --tcp-flags SYN,ACK,FIN,RST RST -m limit --limit 1/s --limit-burst 2 -j LOG --log-prefix "Port Scan:"
+    execute_command sudo iptables -A port-scanning -p tcp --tcp-flags SYN,ACK,FIN,RST RST -m limit --limit 1/s --limit-burst 2 -j RETURN
+    execute_command sudo iptables -A port-scanning -j DROP
+    execute_command sudo ip6tables -N port-scanning
+    execute_command sudo ip6tables -A port-scanning -p tcp --tcp-flags SYN,ACK,FIN,RST RST -m limit --limit 1/s --limit-burst 2 -j LOG --log-prefix "Port Scan:"
+    execute_command sudo ip6tables -A port-scanning -p tcp --tcp-flags SYN,ACK,FIN,RST RST -m limit --limit 1/s --limit-burst 2 -j RETURN
+    execute_command sudo ip6tables -A port-scanning -j DROP
 
-    installpackages "iptables-persistent"
-    firewall_install
-    add_checkmark 3
-    sleep 5
+    # Layer 7 DDoS protection
+    execute_command sudo iptables -N LAYER7_DDOS_HTTP
+    execute_command sudo iptables -A LAYER7_DDOS_HTTP -p tcp --dport 80 -m string --string "GET" --algo bm --to 65535 -j DROP
+    execute_command sudo iptables -A LAYER7_DDOS_HTTP -p tcp --dport 80 -m string --string "POST" --algo bm --to 65535 -j DROP
+    execute_command sudo iptables -A LAYER7_DDOS_HTTP -p tcp --dport 80 -m recent --name HTTP --update --seconds 60 --hitcount 50 -j DROP
+
+    execute_command sudo ip6tables -N LAYER7_DDOS_HTTP
+    execute_command sudo ip6tables -A LAYER7_DDOS_HTTP -p tcp --dport 80 -m string --string "GET" --algo bm --to 65535 -j DROP
+    execute_command sudo ip6tables -A LAYER7_DDOS_HTTP -p tcp --dport 80 -m string --string "POST" --algo bm --to 65535 -j DROP
+    execute_command sudo ip6tables -A LAYER7_DDOS_HTTP -p tcp --dport 80 -m recent --name HTTP --update --seconds 60 --hitcount 50 -j DROP
+
+    execute_command sudo iptables -N LAYER7_DDOS_HTTPS
+    execute_command sudo iptables -A LAYER7_DDOS_HTTPS -p tcp --dport 443 -m string --string "GET" --algo bm --to 65535 -j DROP
+    execute_command sudo iptables -A LAYER7_DDOS_HTTPS -p tcp --dport 443 -m string --string "POST" --algo bm --to 65535 -j DROP
+    execute_command sudo iptables -A LAYER7_DDOS_HTTPS -p tcp --dport 443 -m recent --name HTTPS --update --seconds 60 --hitcount 50 -j DROP
+
+    execute_command sudo ip6tables -N LAYER7_DDOS_HTTPS
+    execute_command sudo ip6tables -A LAYER7_DDOS_HTTPS -p tcp --dport 443 -m string --string "GET" --algo bm --to 65535 -j DROP
+    execute_command sudo ip6tables -A LAYER7_DDOS_HTTPS -p tcp --dport 443 -m string --string "POST" --algo bm --to 65535 -j DROP
+    execute_command sudo ip6tables -A LAYER7_DDOS_HTTPS -p tcp --dport 443 -m recent --name HTTPS --update --seconds 60 --hitcount 50 -j DROP
+
+    # Allow HTTP (port 80) connections
+    execute_command sudo iptables -A INPUT -p tcp --dport 80 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+    execute_command sudo ip6tables -A INPUT -p tcp --dport 80 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+    # Allow HTTPS (port 443) connections
+    execute_command sudo iptables -A INPUT -p tcp --dport 443 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+    execute_command sudo ip6tables -A INPUT -p tcp --dport 443 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+    # Ensure LAYER7_DDOS chains are called
+    execute_command sudo iptables -A INPUT -j LAYER7_DDOS_HTTP
+    execute_command sudo iptables -A INPUT -j LAYER7_DDOS_HTTPS
+    execute_command sudo ip6tables -A INPUT -j LAYER7_DDOS_HTTP
+    execute_command sudo ip6tables -A INPUT -j LAYER7_DDOS_HTTPS
+
+    # Accept packets for loopback interface
+    execute_command sudo iptables -A INPUT -i lo -j ACCEPT
+    execute_command sudo ip6tables -A INPUT -i lo -j ACCEPT
+
+    # Accept established connections
+    execute_command sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+    execute_command sudo ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+    # Allow SSH (port 22) connections
+    execute_command sudo iptables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+    execute_command sudo ip6tables -A INPUT -p tcp --dport 22 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT
+
+    # Save the iptables rules
+    execute_command sudo netfilter-persistent save
+
+    clear_console
+    echo -e "Firewall rules setup successfully. ✔\n"
+    read -rp "Press Enter to continue..."
 }
 
 restart_services() {
-    read -p "Enter the services you want to restart: " services </dev/tty
-    echo "The service/services $services will be restarted"
-    sudo systemctl restart $services && echo "Restarted service(s) $services ✔"
-    echo -e "\nThe service/services $services was/were restarted\n"
-    add_checkmark 4
-    sleep 5
+    clear_console
+    echo "bogdiz: Restarting services..."
+    services=(apache2 mysql nginx)
+    for service in "${services[@]}"; do
+        if sudo systemctl restart "$service"; then
+            echo -e "Service $service restarted successfully. ✔"
+        else
+            echo -e "Failed to restart service $service. ✘"
+        fi
+    done
+    read -rp "Press Enter to continue..."
 }
 
 while true; do
-    clear
-    echo -e "######################################################################################
-#                                                                                    #
-#                            Project 'BOGDIZ - Firewall'                             #
-#                                                                                    #
-######################################################################################\n"
-
-    show_menu
-    read -p "Enter your choice: " choice </dev/tty
-
+    clear_console
+    echo "Select an option:"
+    echo "1. Clear Firewall"
+    echo "2. List Firewall Rules"
+    echo "3. Setup Firewall"
+    echo "4. Restart Services"
+    echo "5. Install packages"
+    echo "6. Exit"
+    read -rp "Enter your choice: " choice
     case $choice in
         1)
-            clear_firewall
+            clear_console
+            echo "bogdiz: Clearing firewall rules..."
+            if sudo iptables -F && sudo ip6tables -F && sudo iptables -t nat -F && sudo ip6tables -t nat -F; then
+                echo -e "Firewall rules cleared successfully. ✔\n"
+            else
+                echo -e "Failed to clear firewall rules. ✘\n"
+            fi
+            read -rp "Press Enter to continue..."
             ;;
         2)
-            list_firewall
+            clear_console
+            echo "bogdiz: Listing firewall rules..."
+            sudo iptables -L -v -n
+            sudo ip6tables -L -v -n
+            read -rp "Press Enter to continue..."
             ;;
         3)
-            setup_firewall
+            firewall_install
             ;;
         4)
             restart_services
             ;;
         5)
-            echo "Exiting..."
+            installpackages iptables-persistent
+            ;;
+        6)
             exit 0
             ;;
         *)
-            echo "Invalid choice. Please select a valid option."
-            sleep 2
+            clear_console
+            echo "Invalid choice. Please try again."
+            read -rp "Press Enter to continue..."
             ;;
     esac
 done

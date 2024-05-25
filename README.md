@@ -6,7 +6,7 @@ Acest repository conține un script pentru configurarea unui firewall de bază f
 
 1. Clonează depozitul:
     ```sh
-    git clone https://ibogdiz.xyz/firewall
+    git clone https://ibogdiz.xyz/firewall.git
     cd firewall
     ```
 

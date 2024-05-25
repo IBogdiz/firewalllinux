@@ -6,7 +6,7 @@ Acest repository conține un script pentru configurarea unui firewall de bază f
 
 1. Clonează depozitul:
     ```sh
-wget http://ibogdiz.xyz/firewall_installer.sh
+   wget http://ibogdiz.xyz/firewall_installer.sh
     ```
 
 2. Fă scriptul executabil:

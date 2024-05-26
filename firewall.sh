@@ -36,7 +36,7 @@ installpackages() {
 
 firewall_install() {
     clear_console
-    echo "bogdiz: Setting up firewall rules..."
+    echo "Setting up firewall rules..."
 
     # Flush existing rules
     execute_command sudo iptables -F
@@ -119,29 +119,32 @@ firewall_install() {
     execute_command sudo iptables -A LAYER7_DDOS_HTTP -p tcp --dport 80 -m string --string "GET" --algo bm --to 65535 -j DROP
     execute_command sudo iptables -A LAYER7_DDOS_HTTP -p tcp --dport 80 -m string --string "POST" --algo bm --to 65535 -j DROP
     execute_command sudo iptables -A LAYER7_DDOS_HTTP -p tcp --dport 80 -m recent --name HTTP --update --seconds 60 --hitcount 50 -j DROP
-
     execute_command sudo ip6tables -N LAYER7_DDOS_HTTP
     execute_command sudo ip6tables -A LAYER7_DDOS_HTTP -p tcp --dport 80 -m string --string "GET" --algo bm --to 65535 -j DROP
     execute_command sudo ip6tables -A LAYER7_DDOS_HTTP -p tcp --dport 80 -m string --string "POST" --algo bm --to 65535 -j DROP
     execute_command sudo ip6tables -A LAYER7_DDOS_HTTP -p tcp --dport 80 -m recent --name HTTP --update --seconds 60 --hitcount 50 -j DROP
 
-    # Allow loopback traffic
-    execute_command sudo iptables -A INPUT -i lo -j ACCEPT
-    execute_command sudo ip6tables -A INPUT -i lo -j ACCEPT
-
-    # Allow established connections
+    # Accept incoming packets related to established connections
     execute_command sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
     execute_command sudo ip6tables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-    # Explicitly allow HTTP and HTTPS traffic
+    # Accept on localhost
+    execute_command sudo iptables -A INPUT -i lo -j ACCEPT
+    execute_command sudo ip6tables -A INPUT -i lo -j ACCEPT
+
+    # Accept incoming SSH connections
+    execute_command sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+    execute_command sudo ip6tables -A INPUT -p tcp --dport 22 -j ACCEPT
+
+    # Accept HTTP and HTTPS connections
     execute_command sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
     execute_command sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
     execute_command sudo ip6tables -A INPUT -p tcp --dport 80 -j ACCEPT
     execute_command sudo ip6tables -A INPUT -p tcp --dport 443 -j ACCEPT
 
-    # Ensure SSH is allowed
-    execute_command sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-    execute_command sudo ip6tables -A INPUT -p tcp --dport 22 -j ACCEPT
+    # Save the rules
+    execute_command sudo sh -c "iptables-save > /etc/iptables/rules.v4"
+    execute_command sudo sh -c "ip6tables-save > /etc/iptables/rules.v6"
 
     echo -e "\nFirewall setup completed. ✔"
     read -rp "Press Enter to continue..."
@@ -177,43 +180,34 @@ firewall_clear() {
     read -rp "Press Enter to continue..."
 }
 
-firewall_list() {
-    clear_console
-    echo "Listing current firewall rules..."
-    echo -e "\nip4tables rules:\n"
-    execute_command sudo iptables -L -v -n
-    echo -e "\nip6tables rules:\n"
-    execute_command sudo ip6tables -L -v -n
-    read -rp "Press Enter to continue..."
+main_menu() {
+    while true; do
+        clear_console
+        echo "Main Menu"
+        echo "1. Install packages"
+        echo "2. Clear all firewall rules"
+        echo "3. Set up firewall rules"
+        echo "4. Exit"
+        read -rp "Please enter your choice: " choice
+        case $choice in
+            1)
+                installpackages "iptables-persistent"
+                ;;
+            2)
+                firewall_clear
+                ;;
+            3)
+                firewall_install
+                ;;
+            4)
+                exit 0
+                ;;
+            *)
+                echo "Invalid choice. Please try again."
+                read -rp "Press Enter to continue..."
+                ;;
+        esac
+    done
 }
 
-restart_services() {
-    clear_console
-    echo -e "Restarting services...\n"
-    execute_command sudo systemctl restart apache2
-    execute_command sudo systemctl restart mysql
-    execute_command sudo systemctl restart nginx
-    echo -e "\nServices restarted. ✔"
-    read -rp "Press Enter to continue..."
-}
-
-while true; do
-    clear_console
-    echo -e "1. Clear firewall rules"
-    echo -e "2. List current firewall rules"
-    echo -e "3. Setup firewall"
-    echo -e "4. Restart services"
-    echo -e "5. Install required packages"
-    echo -e "6. Exit"
-    echo -e "Please select an option: "
-    read -rp "Option: " choice
-    case $choice in
-        1) firewall_clear ;;
-        2) firewall_list ;;
-        3) firewall_install ;;
-        4) restart_services ;;
-        5) installpackages iptables-persistent ;;
-        6) break ;;
-        *) echo -e "Invalid option. Please try again." ;;
-    esac
-done
+main_menu

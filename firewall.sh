@@ -180,6 +180,31 @@ firewall_clear() {
     read -rp "Press Enter to continue..."
 }
 
+firewall_open_port() {
+    clear_console
+    echo "Open a new port"
+
+    read -rp "Enter the port number you want to open: " port
+    read -rp "Enter the protocol (tcp/udp): " protocol
+
+    if [ "$protocol" == "tcp" ]; then
+        execute_command sudo iptables -A INPUT -p tcp --dport "$port" -j ACCEPT
+        execute_command sudo ip6tables -A INPUT -p tcp --dport "$port" -j ACCEPT
+    elif [ "$protocol" == "udp" ]; then
+        execute_command sudo iptables -A INPUT -p udp --dport "$port" -j ACCEPT
+        execute_command sudo ip6tables -A INPUT -p udp --dport "$port" -j ACCEPT
+    else
+        echo "Invalid protocol specified. Please enter either 'tcp' or 'udp'."
+    fi
+
+    # Save the rules
+    execute_command sudo sh -c "iptables-save > /etc/iptables/rules.v4"
+    execute_command sudo sh -c "ip6tables-save > /etc/iptables/rules.v6"
+
+    echo -e "\nPort $port/$protocol opened. ✔"
+    read -rp "Press Enter to continue..."
+}
+
 main_menu() {
     while true; do
         clear_console
@@ -187,7 +212,8 @@ main_menu() {
         echo "1. Install packages"
         echo "2. Clear all firewall rules"
         echo "3. Set up firewall rules"
-        echo "4. Exit"
+        echo "4. Open a new port"
+        echo "5. Exit"
         read -rp "Please enter your choice: " choice
         case $choice in
             1)
@@ -200,6 +226,9 @@ main_menu() {
                 firewall_install
                 ;;
             4)
+                firewall_open_port
+                ;;
+            5)
                 exit 0
                 ;;
             *)

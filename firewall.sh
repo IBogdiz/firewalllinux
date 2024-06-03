@@ -205,6 +205,45 @@ firewall_open_port() {
     read -rp "Press Enter to continue..."
 }
 
+firewall_close_port() {
+    clear_console
+    echo "Close a port"
+
+    read -rp "Enter the port number you want to close: " port
+    echo "Choose the protocol option:"
+    echo "1. TCP and UDP"
+    echo "2. UDP only"
+    echo "3. TCP only"
+    read -rp "Please enter your choice: " protocol_option
+
+    case $protocol_option in
+        1)
+            execute_command sudo iptables -D INPUT -p tcp --dport "$port" -j ACCEPT
+            execute_command sudo iptables -D INPUT -p udp --dport "$port" -j ACCEPT
+            execute_command sudo ip6tables -D INPUT -p tcp --dport "$port" -j ACCEPT
+            execute_command sudo ip6tables -D INPUT -p udp --dport "$port" -j ACCEPT
+            ;;
+        2)
+            execute_command sudo iptables -D INPUT -p udp --dport "$port" -j ACCEPT
+            execute_command sudo ip6tables -D INPUT -p udp --dport "$port" -j ACCEPT
+            ;;
+        3)
+            execute_command sudo iptables -D INPUT -p tcp --dport "$port" -j ACCEPT
+            execute_command sudo ip6tables -D INPUT -p tcp --dport "$port" -j ACCEPT
+            ;;
+        *)
+            echo "Invalid choice. Please enter 1, 2, or 3."
+            ;;
+    esac
+
+    # Save the rules
+    execute_command sudo sh -c "iptables-save > /etc/iptables/rules.v4"
+    execute_command sudo sh -c "ip6tables-save > /etc/iptables/rules.v6"
+
+    echo -e "\nPort $port closed. ✔"
+    read -rp "Press Enter to continue..."
+}
+
 main_menu() {
     while true; do
         clear_console
@@ -213,7 +252,8 @@ main_menu() {
         echo "2. Clear all firewall rules"
         echo "3. Set up firewall rules"
         echo "4. Open a new port"
-        echo "5. Exit"
+        echo "5. Close a port"
+        echo "6. Exit"
         read -rp "Please enter your choice: " choice
         case $choice in
             1)
@@ -229,6 +269,9 @@ main_menu() {
                 firewall_open_port
                 ;;
             5)
+                firewall_close_port
+                ;;
+            6)
                 exit 0
                 ;;
             *)

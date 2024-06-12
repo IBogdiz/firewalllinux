@@ -256,7 +256,29 @@ close_port() {
     read -rp "Press Enter to continue..."
 }
 
+enable_dns_protection() {
+    clear_console
+    echo "Enabling DNS protection..."
 
+    # Prompt for the port number
+    read -rp "Enter the port number to protect (default is 53): " port
+    port="${port:-53}"  # If no input provided, default to port 53
+
+    # Layer 7 DNS protection
+    execute_command sudo iptables -N LAYER7_DDOS_DNS
+    execute_command sudo iptables -A LAYER7_DDOS_DNS -p tcp --dport "$port" -m string --hex-string "|00 00 01 00 00 01|" --algo bm -j DROP
+    execute_command sudo iptables -A LAYER7_DDOS_DNS -p tcp --sport "$port" -m string --hex-string "|00 00 01 00 00 01|" --algo bm -j DROP
+    execute_command sudo iptables -A LAYER7_DDOS_DNS -p udp --dport "$port" -m string --hex-string "|00 00 01 00 00 01|" --algo bm -j DROP
+    execute_command sudo iptables -A LAYER7_DDOS_DNS -p udp --sport "$port" -m string --hex-string "|00 00 01 00 00 01|" --algo bm -j DROP
+    execute_command sudo ip6tables -N LAYER7_DDOS_DNS
+    execute_command sudo ip6tables -A LAYER7_DDOS_DNS -p tcp --dport "$port" -m string --hex-string "|00 00 01 00 00 01|" --algo bm -j DROP
+    execute_command sudo ip6tables -A LAYER7_DDOS_DNS -p tcp --sport "$port" -m string --hex-string "|00 00 01 00 00 01|" --algo bm -j DROP
+    execute_command sudo ip6tables -A LAYER7_DDOS_DNS -p udp --dport "$port" -m string --hex-string "|00 00 01 00 00 01|" --algo bm -j DROP
+    execute_command sudo ip6tables -A LAYER7_DDOS_DNS -p udp --sport "$port" -m string --hex-string "|00 00 01 00 00 01|" --algo bm -j DROP
+
+    echo -e "DNS protection for port $port has been enabled successfully. ✔\n"
+    read -rp "Press Enter to continue..."
+}
 
 
 # Main menu
@@ -265,9 +287,10 @@ while true; do
     echo "Main Menu"
     echo "1) Install packages"
     echo "2) Setup firewall rules"
-    echo "3) Open a port"
-    echo "4) Close a port"
-    echo "5) Exit"
+    echo "3) Enable DNS protection"
+    echo "4) Open a port"
+    echo "5) Close a port"
+    echo "6) Exit"
     read -rp "Enter your choice: " choice
     case $choice in
         1)
@@ -277,12 +300,15 @@ while true; do
             firewall_install
             ;;
         3)
-            open_port
+            enable_dns_protection
             ;;
         4)
-            close_port
+            open_port
             ;;
         5)
+            close_port
+            ;;
+        6)
             exit 0
             ;;
         *)
